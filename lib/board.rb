@@ -3,7 +3,7 @@
 # Module for printing hangman board
 module Board
   def board(misses) # rubocop:disable Metrics/MethodLength
-    puts ['
+    ['
   +---+
       |
       |

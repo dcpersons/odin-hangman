@@ -5,46 +5,59 @@ require_relative 'board'
 # For creating games of hangman
 class Game
   include Board
-  def initialize(word = random_word.upcase, misses = 0, guessed = [])
+  def initialize(word = random_word, guessed = [])
     @word = word
-    @misses = misses
     @guessed = guessed
     @revealed = Array.new(@word.length) { '_' }
-    @winner = false
+    reveal
+    @misses = @guessed.length - (@revealed.uniq.length - 1)
     play_game
   end
 
+  def self.new_game
+    Game.new
+  end
+
   def self.load_game
-    puts 'Which game would you like to load?'
-    Dir.foreach('./saves') do |filename|
-      puts filename.split('.').first unless ['.', '..'].include?(filename)
+    loaded = choose_save
+    game = YAML.load_file("./saves/#{loaded}.yml")
+    Game.new(game[:word], game[:guessed])
+  end
+
+  def self.choose_save
+    loaded = loop do
+      puts 'Which game would you like to load?'
+      Dir.children('./saves').each { |filename| puts filename.split('.').first }
+      break loaded if Dir.children('./saves').include?("#{loaded = gets.chomp.downcase}.yml")
+
+      puts 'Sorry, I didn\'t quite get that.'
     end
-    loaded = YAML.load_file("./saves/#{gets.chomp.downcase}.yml")
-    new(loaded[:word], loaded[:misses], loaded[:guessed])
   end
 
   private
 
   def play_game
-    reveal
     status
     until @misses == 7 || @winner
       guess = guess_letter
+      return if @saved
+
       @guessed.push(guess)
       make_guess(guess)
     end
-    win if @winner
-    lose unless @winner
+    game_over
   end
 
   def guess_letter
-    puts 'Please enter a letter you haven\'t guessed yet, or enter "save" to save your game.'
     loop do
+      puts 'Please enter a letter you haven\'t guessed yet, or "save" to save your game.'
       guess = gets.chomp.upcase
       return guess if guess.length == 1 && !@guessed.include?(guess) && guess.match?(/[A-Z]/)
 
       save if guess == 'SAVE'
-      puts 'Sorry, I didn\'t quite get that. Please enter a letter you haven\'t guessed yet.'
+      return if @saved
+
+      puts 'Sorry, I didn\'t quite get that.'
       status
     end
   end
@@ -70,24 +83,20 @@ class Game
   end
 
   def status
-    board(@misses)
+    puts board(@misses)
     puts 'Word:'
     puts @revealed.join(' ')
     puts 'Letters you\'ve guessed so far:'
     puts @guessed.sort.join(' ')
   end
 
-  def win
-    board(@misses)
-    puts "Congratulations! You found the word '#{@word.downcase}'!"
-  end
-
-  def lose
-    puts "Oh dear, you are dead! The word was '#{@word.downcase}'."
-  end
-
-  def random_word
-    File.readlines('lib/words.txt').filter { |w| w.length >= 6 && w.length <= 13 }.sample.chomp
+  def game_over
+    if @winner
+      puts board(@misses)
+      puts "Congratulations! You found the word '#{@word.downcase}'!"
+    else
+      puts "Oh dear, you are dead! The word was '#{@word.downcase}'."
+    end
   end
 
   def reveal
@@ -96,16 +105,19 @@ class Game
     end
   end
 
+  def random_word
+    File.readlines('./lib/words.txt').filter { |w| w.length >= 6 && w.length <= 13 }.sample.chomp.upcase
+  end
+
   def save
     puts 'What would you like your save to be called?'
     name = gets.chomp.downcase
     file = File.new("saves/#{name}.yml", 'w')
     file.write(YAML.dump({
                            word: @word,
-                           misses: @misses,
-                           revealed: @revealed,
                            guessed: @guessed
                          }))
-    exit
+    @saved = true
+    file.fsync
   end
 end
